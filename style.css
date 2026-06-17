@@ -137,6 +137,11 @@ header p {
 }
 
 /* Globe sightings tracker */
+.tracker {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
 .tracker-intro {
   font-size: 0.9375rem;
   color: var(--muted);
@@ -174,8 +179,7 @@ header p {
 .tracker-photo {
   display: block;
   width: 100%;
-  max-height: 340px;
-  object-fit: cover;
+  height: auto;
   border-radius: 0.375rem;
 }
 

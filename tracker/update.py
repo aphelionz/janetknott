@@ -18,11 +18,13 @@ is retried on the next run.
 Stdlib only, so the GitHub Action needs no `pip install`.
 """
 
+import hashlib
 import json
 import re
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+from collections import Counter
 from datetime import date, datetime, timezone
 from email.utils import parsedate_to_datetime
 from html import escape, unescape
@@ -31,6 +33,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SIGHTINGS_PATH = ROOT / "tracker" / "sightings.json"
 OUTPUT_PATH = ROOT / "tracker.html"
+STYLE_PATH = ROOT / "style.css"
 
 # Google News RSS search for the exact phrase. Filtering to the Globe and to
 # the exact name happens below; this just casts the net.
@@ -122,9 +125,8 @@ OG_IMAGE_PATTERNS = (
 )
 
 
-def fetch_og_image(url):
+def extract_og_image(html):
     """Return the article's social-preview image URL, or None."""
-    html = http_get(url)
     for pat in OG_IMAGE_PATTERNS:
         m = re.search(pat, html, re.I)
         if m:
@@ -132,26 +134,56 @@ def fetch_og_image(url):
     return None
 
 
-def enrich(sighting):
-    """Best-effort: resolve the real Globe URL and its preview image.
+# A 4-digit year sitting just before a "Janet Knott" photo credit. Globe photo
+# captions read like "...the 1979 opener. (Janet Knott/Globe Staff)" or
+# "...on Jan. 28, 1986. Janet Knott/Globe Staff", so the year nearest the credit
+# is the year the photo was taken. The [^0-9]{0,40} gap stops at any other digit,
+# so we only take a year that is genuinely adjacent to her byline.
+CAPTION_YEAR_RE = re.compile(
+    r"((?:19|20)\d{2})[^0-9]{0,40}?\(?\s*Janet Knott", re.IGNORECASE
+)
 
-    Failures are non-fatal; the entry just stays link-only and is retried on
-    the next run (we re-attempt any sighting still missing an image).
+
+def detect_shoot_year_from_article(html):
+    """Best-effort original-photo year from the caption next to her credit."""
+    text = unescape(strip_tags(html))
+    years = [int(y) for y in CAPTION_YEAR_RE.findall(text)]
+    if not years:
+        return None
+    # Most frequent (a gallery repeats the same year), tie-broken by earliest.
+    counts = Counter(years)
+    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+
+
+def enrich(sighting):
+    """Best-effort: resolve the real Globe URL, preview image, and photo year.
+
+    Failures are non-fatal; the entry stays link-only and is retried next run.
+    On a successful article fetch we set "enriched" so we don't re-fetch an
+    entry whose photo year is genuinely unknown (e.g. caption says "date
+    unknown").
     """
+    label = sighting["title"][:45]
     try:
         real = resolve_article_url(sighting["url"])
         if not real:
-            print(f"  ! could not resolve {sighting['title'][:45]}")
+            print(f"  ! could not resolve {label}")
             return
         sighting["article_url"] = real
-        img = fetch_og_image(real)
+        html = http_get(real)
+
+        img = extract_og_image(html)
         if img:
             sighting["image"] = img
-            print(f"  * image for {sighting['title'][:45]}")
-        else:
-            print(f"  ! no preview image for {sighting['title'][:45]}")
+        if not sighting.get("shoot_year"):
+            year = detect_shoot_year_from_article(html)
+            if year:
+                sighting["shoot_year"] = year
+        sighting["enriched"] = True
+        print(f"  * enriched {label} (image={bool(img)}, "
+              f"shoot_year={sighting.get('shoot_year')})")
     except Exception as exc:
-        print(f"  ! enrich failed for {sighting['title'][:45]}: {exc!r}")
+        print(f"  ! enrich failed for {label}: {exc!r}")
 
 
 def strip_tags(text):
@@ -264,7 +296,7 @@ def reuse_year(s):
     return stamp[:4] if len(stamp) >= 4 else ""
 
 
-def render(sightings, generated_on):
+def render(sightings, generated_on, style_version=""):
     count = len(sightings)
 
     if count:
@@ -291,7 +323,7 @@ def render(sightings, generated_on):
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="A tracker of Janet Knott's Boston Globe archive photos resurfacing, years later." />
   <title>Globe Sightings | Janet Knott</title>
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="/style.css{style_version}" />
 </head>
 <body>
   <div class="container">
@@ -305,7 +337,7 @@ def render(sightings, generated_on):
       </nav>
     </header>
     <main>
-      <section>
+      <section class="tracker">
         <h2 class="section-title">Globe Sightings</h2>
         <p class="tracker-intro">Janet shot thousands of frames for the Boston Globe. Every
         so often the paper reaches back into the archive and one of them runs again, decades
@@ -383,14 +415,20 @@ def main():
 
     sightings, added = merge(existing, found, today)
 
-    # Best-effort enrichment: resolve real Globe URLs and preview images for any
-    # sighting still missing one (backfills existing entries, retries failures).
+    # Best-effort enrichment: resolve real Globe URLs, preview images, and the
+    # original photo year for any not-yet-enriched sighting. Backfills existing
+    # entries and retries ones whose article fetch previously failed.
     for s in sightings:
-        if not s.get("image"):
+        if not s.get("enriched"):
             enrich(s)
 
+    style_version = ""
+    if STYLE_PATH.exists():
+        digest = hashlib.md5(STYLE_PATH.read_bytes()).hexdigest()[:8]
+        style_version = f"?v={digest}"
+
     SIGHTINGS_PATH.write_text(json.dumps(sightings, indent=2) + "\n")
-    OUTPUT_PATH.write_text(render(sightings, generated_on))
+    OUTPUT_PATH.write_text(render(sightings, generated_on, style_version))
 
     print(f"Added {len(added)} new sighting(s); {len(sightings)} total.")
     for s in added:

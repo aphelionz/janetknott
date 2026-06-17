@@ -5,10 +5,11 @@
     "published": "2025-04-03",
     "discovered": "2026-06-16",
     "source": "The Boston Globe",
-    "shoot_year": null,
+    "shoot_year": 1979,
     "snippet": "Historic Red Sox photos of Fenway Park in Boston \u00a0\u00a0 The Boston Globe",
     "article_url": "https://apps.bostonglobe.com/sports/2025/04/fenway-park-opening-day-through-years/",
-    "image": "https://apps.bostonglobe.com/sports/2025/04/fenway-park-opening-day-through-years/static/cf2260f8794084af98715a0fd669b36d/47498/OJK46W3JVDEVGMDWNPKG4HYWTQ.jpg"
+    "image": "https://apps.bostonglobe.com/sports/2025/04/fenway-park-opening-day-through-years/static/cf2260f8794084af98715a0fd669b36d/47498/OJK46W3JVDEVGMDWNPKG4HYWTQ.jpg",
+    "enriched": true
   },
   {
     "url": "https://news.google.com/rss/articles/CBMi0wFBVV95cUxOd2g2NnUyWFZaU2NzYTV4R29FS1pGVVVUTmhVR2NXak12V3NzZzFMdGI3U0FLSDB0dlNlNERSTzFVN0xXRjhIX1VYRDdJRXh0alJfbzI5N212alZsNENCcWw3ekROVjZ2WWZCdmEyaHZxUFFkZU5QbjlhSTFEV0VkdG83YUp0QUJ0T2lfUnNfOENVbzQ2dzVjMHVHVXNidnhJTksyQVFSVFk4NlNMellUQ3o2Z3pMWWtNRUVCNmN0QVRSVjZiQ0ZjTlJMdVl1UkIxSm44?oc=5",
@@ -19,7 +20,8 @@
     "shoot_year": null,
     "snippet": "Loretta McLaughlin is famous for breaking the Boston Strangler case, but coworkers remember so much more \u00a0\u00a0 The Boston Globe",
     "article_url": "https://www.bostonglobe.com/2023/03/31/metro/loretta-mclaughlin-is-famous-breaking-boston-strangler-case-coworkers-remember-so-much-more/",
-    "image": "https://bostonglobe-prod.cdn.arcpublishing.com/resizer/v2/LF7IB6POF2EWU3ECQ34HSVUCMQ.JPG?auth=7ba6683851915308e5955e0eb0d818d2688620eddad57bcd47154a94589dda4a&width=1440"
+    "image": "https://bostonglobe-prod.cdn.arcpublishing.com/resizer/v2/LF7IB6POF2EWU3ECQ34HSVUCMQ.JPG?auth=7ba6683851915308e5955e0eb0d818d2688620eddad57bcd47154a94589dda4a&width=1440",
+    "enriched": true
   },
   {
     "url": "https://news.google.com/rss/articles/CBMitgFBVV95cUxNNGJheHZHVWFyU2dpeW9KX2lQdjFpNXJ1T0pZbzYwdWtwN1YxQUt5dVE5Q0sxTFZ1YXRpWllYVlJPRE4zU05ERmJ0eUdDeFlGQWw1T2pVS1FLSTR2RU5UZlpIbzJhTmpWZFB4RjZoSGJpZGFXTnRxTFNkV2ZCQjZYQTM4WHVSdTAzLW9OTFVkRXZPeVJPWk9VOFhkR0xxSVlZME5Fb2FiTlpRVkZXR3NjT3d0QWdsQQ?oc=5",
@@ -27,9 +29,10 @@
     "published": "2021-01-28",
     "discovered": "2026-06-16",
     "source": "The Boston Globe",
-    "shoot_year": null,
+    "shoot_year": 1986,
     "snippet": "On 35th anniversary of Challenger disaster, a look back at Globe coverage of the tragedy \u00a0\u00a0 The Boston Globe",
     "article_url": "https://www.bostonglobe.com/2021/01/28/metro/35th-anniversary-challenger-disaster-look-back-globe-coverage-tragedy/",
-    "image": "https://bostonglobe-prod.cdn.arcpublishing.com/resizer/v2/ZT3KO5ASRZCMBI3S3QXFGIZKJE.jpg?auth=1886986c23a653686401d876843e951629d17d89282367e284e844f9f6329001&width=1440"
+    "image": "https://bostonglobe-prod.cdn.arcpublishing.com/resizer/v2/ZT3KO5ASRZCMBI3S3QXFGIZKJE.jpg?auth=1886986c23a653686401d876843e951629d17d89282367e284e844f9f6329001&width=1440",
+    "enriched": true
   }
 ]
