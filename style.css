@@ -166,6 +166,25 @@ header p {
   background: var(--card-bg);
 }
 
+.tracker-photo-link {
+  display: block;
+  margin-bottom: 0.75rem;
+}
+
+.tracker-photo {
+  display: block;
+  width: 100%;
+  max-height: 340px;
+  object-fit: cover;
+  border-radius: 0.375rem;
+}
+
+.tracker-credit {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin: -0.5rem 0 0.75rem;
+}
+
 .tracker-title {
   display: block;
   font-size: 1.0625rem;

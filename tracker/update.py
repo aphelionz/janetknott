@@ -9,11 +9,18 @@ captions that search engines do not index, so this catches the cases where
 "Janet Knott" appears in indexed text and misses caption-only credits. The
 JSON datastore can always be hand-edited to add or correct entries.
 
+For each sighting it also tries to resolve the real Globe URL (the feed only
+gives Google News redirect links) and pull the article's social-preview image
+to show as an attributed thumbnail. That resolution is brittle (it depends on
+an undocumented Google endpoint); when it fails the entry stays link-only and
+is retried on the next run.
+
 Stdlib only, so the GitHub Action needs no `pip install`.
 """
 
 import json
 import re
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timezone
@@ -32,6 +39,12 @@ FEED_URL = (
     "?q=%22Janet+Knott%22&hl=en-US&gl=US&ceid=US:en"
 )
 USER_AGENT = "janetknott-tracker/1.0 (+https://janetknott.com)"
+# A browser UA is needed to resolve Google News links and fetch Globe pages.
+BROWSER_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+)
+BATCHEXECUTE_URL = "https://news.google.com/_/DotsSplashUi/data/batchexecute"
 
 # Janet is a *former* Globe staff photographer, so any reasonably recent Globe
 # article carrying her byline is necessarily reusing an old archive photo, i.e.
@@ -54,6 +67,91 @@ def fetch_feed(url=FEED_URL):
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=30) as resp:
         return resp.read()
+
+
+def http_get(url, data=None):
+    headers = {"User-Agent": BROWSER_UA}
+    if data is not None:
+        headers["Content-Type"] = "application/x-www-form-urlencoded;charset=UTF-8"
+    req = urllib.request.Request(url, data=data, headers=headers)
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return resp.read().decode("utf-8", "replace")
+
+
+def resolve_article_url(google_url):
+    """Resolve a Google News redirect link to the real publisher URL.
+
+    Google News no longer 301-redirects; the link returns a JS interstitial
+    carrying a signature + timestamp that must be POSTed to an internal
+    batchexecute endpoint to get the article URL back. This is inherently
+    brittle (Google can change it); callers must tolerate a None return.
+    """
+    html = http_get(google_url)
+    sg = re.search(r'data-n-a-sg="([^"]+)"', html)
+    ts = re.search(r'data-n-a-ts="([^"]+)"', html)
+    aid = re.search(r'data-n-a-id="([^"]+)"', html)
+    if not (sg and ts and aid):
+        return None
+
+    inner = [
+        "garturlreq",
+        [["X", "X", ["X", "X"], None, None, 1, 1, "US:en", None, 1,
+          None, None, None, None, None, 0, 1], "X", "X", 1, [1, 1, 1], 1, 1,
+         None, 0, 0, None, 0],
+        aid.group(1), int(ts.group(1)), sg.group(1),
+    ]
+    payload = "f.req=" + urllib.parse.quote(
+        json.dumps([[["Fbv4je", json.dumps(inner), None, "generic"]]])
+    )
+    resp = http_get(BATCHEXECUTE_URL, payload.encode())
+    if resp.startswith(")]}'"):
+        resp = resp[resp.find("\n") + 1:]
+    for row in json.loads(resp):
+        if len(row) > 2 and row[0] == "wrb.fr" and row[2]:
+            parsed = json.loads(row[2])
+            if isinstance(parsed, list) and len(parsed) > 1 \
+                    and isinstance(parsed[1], str) and parsed[1].startswith("http"):
+                return parsed[1]
+    return None
+
+
+OG_IMAGE_PATTERNS = (
+    r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)',
+    r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image',
+    r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)',
+)
+
+
+def fetch_og_image(url):
+    """Return the article's social-preview image URL, or None."""
+    html = http_get(url)
+    for pat in OG_IMAGE_PATTERNS:
+        m = re.search(pat, html, re.I)
+        if m:
+            return unescape(m.group(1))
+    return None
+
+
+def enrich(sighting):
+    """Best-effort: resolve the real Globe URL and its preview image.
+
+    Failures are non-fatal; the entry just stays link-only and is retried on
+    the next run (we re-attempt any sighting still missing an image).
+    """
+    try:
+        real = resolve_article_url(sighting["url"])
+        if not real:
+            print(f"  ! could not resolve {sighting['title'][:45]}")
+            return
+        sighting["article_url"] = real
+        img = fetch_og_image(real)
+        if img:
+            sighting["image"] = img
+            print(f"  * image for {sighting['title'][:45]}")
+        else:
+            print(f"  ! no preview image for {sighting['title'][:45]}")
+    except Exception as exc:
+        print(f"  ! enrich failed for {sighting['title'][:45]}: {exc!r}")
 
 
 def strip_tags(text):
@@ -226,7 +324,8 @@ def render(sightings, generated_on):
 
 def _item_html(s):
     title = escape(s.get("title") or "Untitled")
-    url = escape(s.get("url") or "#", quote=True)
+    # Link to the resolved Globe article when we have it, else the feed link.
+    link = escape(s.get("article_url") or s.get("url") or "#", quote=True)
     pub = s.get("published") or s.get("discovered") or ""
     pub_label = pub
     if pub:
@@ -241,15 +340,28 @@ def _item_html(s):
     if shoot and ry.isdigit() and int(ry) - int(shoot) > 0:
         gap = int(ry) - int(shoot)
         badge = (
-            '\n        <p class="gap-badge">Shot {shoot} '
+            '\n          <p class="gap-badge">Shot {shoot} '
             '<span class="gap-dot">&middot;</span> resurfaced {ry} '
             '<span class="gap-dot">&middot;</span> '
             '<strong>{gap} year{plural} later</strong></p>'
         ).format(shoot=shoot, ry=ry, gap=gap, plural="s" if gap != 1 else "")
 
+    # Attributed preview thumbnail (the Globe's own social-share image), when
+    # we managed to fetch one. referrerpolicy keeps the hotlink low-profile;
+    # if the CDN ever blocks it the figure simply collapses (alt text remains).
+    figure = ""
+    if s.get("image"):
+        img_src = escape(s["image"], quote=True)
+        figure = (
+            f'\n          <a class="tracker-photo-link" href="{link}" target="_blank" rel="noopener noreferrer">'
+            f'<img class="tracker-photo" src="{img_src}" alt="{title}" loading="lazy" referrerpolicy="no-referrer" /></a>'
+            '\n          <p class="tracker-credit">Preview via The Boston Globe</p>'
+        )
+
     return (
-        '        <li class="tracker-item">\n'
-        f'          <a class="tracker-title" href="{url}" target="_blank" rel="noopener noreferrer">{title}</a>\n'
+        '        <li class="tracker-item">'
+        f'{figure}\n'
+        f'          <a class="tracker-title" href="{link}" target="_blank" rel="noopener noreferrer">{title}</a>\n'
         f'          <time>{escape(pub_label)}</time>{badge}\n'
         "        </li>"
     )
@@ -270,6 +382,12 @@ def main():
         print(f"Feed fetch/parse failed ({exc!r}); rendering from existing data.")
 
     sightings, added = merge(existing, found, today)
+
+    # Best-effort enrichment: resolve real Globe URLs and preview images for any
+    # sighting still missing one (backfills existing entries, retries failures).
+    for s in sightings:
+        if not s.get("image"):
+            enrich(s)
 
     SIGHTINGS_PATH.write_text(json.dumps(sightings, indent=2) + "\n")
     OUTPUT_PATH.write_text(render(sightings, generated_on))
