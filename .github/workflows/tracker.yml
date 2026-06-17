@@ -1,0 +1,58 @@
+name: Update Globe sightings tracker
+
+on:
+  schedule:
+    # Weekly, Mondays 13:00 UTC.
+    - cron: "0 13 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# Don't clash with the regular Pages deploy.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run tracker (stdlib only, no install)
+        run: python tracker/update.py
+
+      - name: Commit if changed
+        run: |
+          if [ -n "$(git status --porcelain tracker/sightings.json tracker.html)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add tracker/sightings.json tracker.html
+            git commit -m "Update Globe sightings tracker"
+            git push
+          else
+            echo "No changes to commit."
+          fi
+
+      # A push made with GITHUB_TOKEN does not trigger deploy.yml, so this
+      # workflow publishes the site itself after updating.
+      - name: Upload static site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

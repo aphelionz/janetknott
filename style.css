@@ -136,6 +136,71 @@ header p {
   line-height: 1.5;
 }
 
+/* Globe sightings tracker */
+.tracker-intro {
+  font-size: 0.9375rem;
+  color: var(--muted);
+  line-height: 1.7;
+  max-width: 640px;
+  margin-bottom: 1.5rem;
+}
+
+.tracker-count {
+  font-size: 0.9375rem;
+  color: var(--fg);
+  margin-bottom: 1rem;
+}
+
+.tracker-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 3rem;
+}
+
+.tracker-item {
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--card-bg);
+}
+
+.tracker-title {
+  display: block;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--fg);
+  text-decoration: none;
+  line-height: 1.35;
+}
+
+.tracker-title:hover {
+  text-decoration: underline;
+}
+
+.tracker-item time {
+  display: block;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  margin-top: 0.25rem;
+}
+
+.gap-badge {
+  font-size: 0.875rem;
+  color: var(--muted);
+  margin-top: 0.5rem;
+}
+
+.gap-badge strong {
+  color: var(--fg);
+}
+
+.gap-dot {
+  margin: 0 0.35rem;
+  color: var(--border);
+}
+
 /* Essay detail */
 .essay {
   max-width: 720px;
