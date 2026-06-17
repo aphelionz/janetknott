@@ -33,7 +33,14 @@ FEED_URL = (
 )
 USER_AGENT = "janetknott-tracker/1.0 (+https://janetknott.com)"
 
-NAME_RE = re.compile(r"janet\s+knott", re.IGNORECASE)
+# Janet is a *former* Globe staff photographer, so any reasonably recent Globe
+# article carrying her byline is necessarily reusing an old archive photo, i.e.
+# a genuine "resurfacing." We keep articles published within this many years and
+# drop the originals from her active-staff era. Set to 6 (not 3) so the window
+# reaches back to the January 2021 Challenger-anniversary retrospective; lower it
+# to tighten the tracker to only the most recent reappearances.
+RECENT_WINDOW_YEARS = 6
+
 # A 4-digit year (1900-2099) sitting near an archive/file cue, so we only claim
 # a shoot year when the text actually implies a reused-archive photo.
 SHOOT_YEAR_RE = re.compile(
@@ -53,8 +60,8 @@ def strip_tags(text):
     return re.sub(r"<[^>]+>", " ", text or "")
 
 
-def parse_items(xml_bytes):
-    """Yield Globe items that credit Janet Knott, as raw dicts."""
+def parse_items(xml_bytes, since_year):
+    """Yield recent Globe items that credit Janet Knott, as raw dicts."""
     root = ET.fromstring(xml_bytes)
     for item in root.iter("item"):
         title = (item.findtext("title") or "").strip()
@@ -67,12 +74,17 @@ def parse_items(xml_bytes):
         source_name = (source_el.text or "").strip() if source_el is not None else ""
         source_url = source_el.get("url", "") if source_el is not None else ""
 
-        # Conservative filter: must be the Boston Globe AND mention the exact name.
-        haystack = f"{title} {description}"
+        # Filter to the Boston Globe. The feed query is the exact phrase
+        # "Janet Knott", so Google has already matched her name inside the
+        # article (usually the photo credit). We do NOT re-check the title or
+        # description, because the RSS snippet carries only the headline and
+        # source name, not the body where the credit lives. Re-checking would
+        # drop every real sighting. Non-Globe noise (obituaries, other people
+        # named Janet Knott) lives on other domains and is screened out here.
         is_globe = "bostonglobe.com" in source_url.lower() or (
             "boston globe" in source_name.lower()
         )
-        if not is_globe or not NAME_RE.search(haystack):
+        if not is_globe:
             continue
 
         published = ""
@@ -82,9 +94,19 @@ def parse_items(xml_bytes):
             except (TypeError, ValueError):
                 published = ""
 
+        # Recent-reuses-only: must have a date and fall within the window. Undated
+        # items can't be confirmed recent, so they're skipped.
+        if not published or int(published[:4]) < since_year:
+            continue
+
+        # Google News titles end with " - <Source>"; drop it, the source is known.
+        clean_title = unescape(title)
+        if source_name and clean_title.endswith(f" - {source_name}"):
+            clean_title = clean_title[: -len(f" - {source_name}")].strip()
+
         yield {
             "url": link,
-            "title": unescape(title),
+            "title": clean_title,
             "published": published,
             "source": source_name or "The Boston Globe",
             "snippet": description,
@@ -234,14 +256,16 @@ def _item_html(s):
 
 
 def main():
-    today = date.today().isoformat()
+    today_date = date.today()
+    today = today_date.isoformat()
+    since_year = today_date.year - RECENT_WINDOW_YEARS
     generated_on = datetime.now(timezone.utc).strftime("%B %-d, %Y")
 
     existing = load_sightings()
     found = []
     try:
-        found = list(parse_items(fetch_feed()))
-        print(f"Feed returned {len(found)} Globe item(s) crediting Janet Knott.")
+        found = list(parse_items(fetch_feed(), since_year))
+        print(f"Feed returned {len(found)} recent Globe item(s) crediting Janet Knott.")
     except Exception as exc:  # network/parse failure: still re-render from cache
         print(f"Feed fetch/parse failed ({exc!r}); rendering from existing data.")
 
