@@ -127,6 +127,42 @@ def detect_caption_year(text):
     return int(m.group(1)) if m else None
 
 
+def fetch_provider_image(article_url):
+    """For known aggregators, return (image_url, caption) for the slide actually
+    credited to Janet Knott, or (None, None). Keeps us from showing the wrong
+    photo from a multi-image listicle."""
+    if "msn.com" in article_url.lower():
+        return _fetch_msn_credited_image(article_url)
+    return None, None
+
+
+def _fetch_msn_credited_image(url):
+    m = re.search(r"/(?:ss|ar)-([A-Za-z0-9]+)", url)
+    if not m:
+        return None, None
+    data = json.loads(http_get(f"https://assets.msn.com/content/view/v2/Detail/en-us/{m.group(1)}"))
+    found = [None, None]
+
+    def walk(o):
+        if found[0]:
+            return
+        if isinstance(o, dict):
+            if "Janet Knott" in str(o.get("attribution", "")) and o.get("url"):
+                found[0], found[1] = o["url"], o.get("attribution", "")
+                return
+            for v in o.values():
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+
+    walk(data)
+    if not found[0]:
+        return None, None
+    sep = "&" if "?" in found[0] else "?"
+    return f"{found[0]}{sep}w=1200", found[1]
+
+
 def parse_alerts_feed(xml_bytes, since_year):
     """Yield candidate sightings from a Google Alert Atom feed."""
     root = ET.fromstring(xml_bytes)
@@ -376,15 +412,16 @@ def render(sightings, generated_on, style_version=""):
         items = "\n".join(_item_html(s) for s in sightings)
         body = (
             f'      <p class="tracker-count"><strong>{count}</strong> '
-            f'Globe sighting{"s" if count != 1 else ""} so far.</p>\n'
+            f'sighting{"s" if count != 1 else ""} so far.</p>\n'
             f'      <ul class="tracker-list">\n{items}\n      </ul>\n'
         )
     else:
         body = (
             '      <div class="empty-state">\n'
-            "        <p>No sightings logged yet. This tracker watches for Boston Globe\n"
-            "        articles that resurface one of Janet&rsquo;s archive photos and credit\n"
-            "        her byline. When one turns up, it lands here.</p>\n"
+            "        <p>No sightings logged yet. This tracker watches for places that\n"
+            "        resurface one of Janet&rsquo;s archive photos and credit her byline,\n"
+            "        in the Globe or anywhere her Getty-licensed frames turn up. When one\n"
+            "        turns up, it lands here.</p>\n"
             "      </div>\n"
         )
 
@@ -394,8 +431,8 @@ def render(sightings, generated_on, style_version=""):
   <meta charset="utf-8" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="A tracker of Janet Knott's Boston Globe archive photos resurfacing, years later." />
-  <title>Globe Sightings | Janet Knott</title>
+  <meta name="description" content="A tracker of Janet Knott's Boston Globe archive photos resurfacing across the web, years later." />
+  <title>Sightings | Janet Knott</title>
   <link rel="stylesheet" href="/style.css{style_version}" />
 </head>
 <body>
@@ -405,13 +442,13 @@ def render(sightings, generated_on, style_version=""):
       <p>Photographer. Photo essays from New England's art scene.</p>
       <nav class="site-nav">
         <a href="/home.html">Home</a>
-        <a href="/tracker.html" aria-current="page">Globe Sightings</a>
+        <a href="/tracker.html" aria-current="page">Sightings</a>
         <a href="https://artspacerodeo.com" target="_blank" rel="noopener noreferrer">Art Space Rodeo &#8599;</a>
       </nav>
     </header>
     <main>
       <section class="tracker">
-        <h2 class="section-title">Globe Sightings</h2>
+        <h2 class="section-title">Sightings</h2>
         <p class="tracker-intro">Janet shot thousands of frames for the Boston Globe. Every
         so often one of them runs again, decades later, her byline along with it: sometimes
         in the Globe itself, sometimes licensed through Getty into a listicle halfway across
@@ -452,22 +489,28 @@ def _item_html(s):
             '<strong>{gap} year{plural} later</strong></p>'
         ).format(shoot=shoot, ry=ry, gap=gap, plural="s" if gap != 1 else "")
 
-    # Attributed preview thumbnail (the Globe's own social-share image), when
-    # we managed to fetch one. referrerpolicy keeps the hotlink low-profile;
-    # if the CDN ever blocks it the figure simply collapses (alt text remains).
+    is_globe = s.get("source") == "The Boston Globe"
+
+    # Attributed thumbnail when we have one (the Globe's social-share image, or
+    # an aggregator's credited slide). The caption under it carries the actual
+    # credit. referrerpolicy keeps the hotlink low-profile; if the CDN ever
+    # blocks it the figure simply collapses and the alt text remains.
     figure = ""
     if s.get("image"):
         img_src = escape(s["image"], quote=True)
+        caption = "Preview via The Boston Globe" if is_globe else (
+            s.get("credit") or f'via {s.get("source", "")}'
+        )
         figure = (
             f'\n          <a class="tracker-photo-link" href="{link}" target="_blank" rel="noopener noreferrer">'
             f'<img class="tracker-photo" src="{img_src}" alt="{title}" loading="lazy" referrerpolicy="no-referrer" /></a>'
-            '\n          <p class="tracker-credit">Preview via The Boston Globe</p>'
+            f'\n          <p class="tracker-credit">{escape(caption)}</p>'
         )
 
-    # Syndicated (non-Globe) sightings: name the outlet and show the byline
-    # credit that proves it is her photo, in place of a (Getty-owned) image.
+    # Syndicated (non-Globe) sightings name the outlet. When there is no image,
+    # show the byline credit as text so the proof-it-is-her line still appears.
     outlet = ""
-    if s.get("source") and s.get("source") != "The Boston Globe":
+    if not is_globe and s.get("source"):
         outlet = f'\n          <p class="tracker-outlet">Appeared in {escape(s["source"])}</p>'
     credit = ""
     if not s.get("image") and s.get("credit"):
@@ -540,7 +583,16 @@ def ingest_alerts(sightings, since_year, today):
         if is_globe:
             enrich(s)  # resolve image + caption year from the Globe page
         else:
-            s["enriched"] = True  # text-only card; no Getty image hotlinking
+            try:
+                img, caption = fetch_provider_image(c["article_url"])
+            except Exception as exc:
+                img, caption = None, None
+                print(f"  ! provider image failed: {exc!r}")
+            if img:
+                s["image"] = img
+                if not s.get("shoot_year"):
+                    s["shoot_year"] = detect_caption_year(caption)
+            s["enriched"] = True
         sightings.append(s)
         added.append(s)
         print(f"  + alert sighting: {s['title'][:45]} (via {s['source']})")
