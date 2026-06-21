@@ -328,45 +328,53 @@ header p {
   color: var(--fg);
 }
 
-/* About / author bio */
-.author-bio {
+/* Home masthead: bio + nav merged into the header */
+.masthead-bio {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 1rem 0 2rem;
-  margin-bottom: 2rem;
-  border-bottom: 1px solid var(--border);
+  gap: 1.25rem;
 }
 
-.author-bio-photo {
-  width: 96px;
-  height: 96px;
+.masthead-photo {
+  width: 84px;
+  height: 84px;
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
 }
 
-.author-bio-text {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.author-bio p {
-  font-size: 0.9375rem;
-  line-height: 1.6;
+.masthead-tagline {
   color: var(--muted);
-  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  margin-top: 0.35rem;
+  max-width: 56ch;
 }
 
-.author-bio-social {
+.masthead-social {
   display: flex;
   gap: 1rem;
+  margin-top: 0.6rem;
 }
 
-.author-bio-social a {
+.masthead-social a {
   font-size: 0.8125rem;
   font-weight: 600;
+}
+
+.masthead .site-nav {
+  margin-top: 1.25rem;
+}
+
+@media (max-width: 480px) {
+  .masthead-bio {
+    gap: 0.9rem;
+  }
+  .masthead-photo {
+    width: 64px;
+    height: 64px;
+    align-self: flex-start;
+  }
 }
 
 /* Footer */
