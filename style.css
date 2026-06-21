@@ -136,105 +136,123 @@ header p {
   line-height: 1.5;
 }
 
-/* Globe sightings tracker */
-.tracker {
-  max-width: 640px;
-  margin: 0 auto;
+/* Sightings — wall of evidence */
+.wall-hero {
+  max-width: 760px;
+  margin: 0 0 2rem;
 }
 
-.tracker-intro {
-  font-size: 0.9375rem;
-  color: var(--muted);
-  line-height: 1.7;
-  max-width: 640px;
-  margin-bottom: 1.5rem;
-}
-
-.tracker-count {
-  font-size: 0.9375rem;
-  color: var(--fg);
-  margin-bottom: 1rem;
-}
-
-.tracker-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  margin-bottom: 3rem;
-}
-
-.tracker-item {
-  padding: 1rem 1.25rem;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  background: var(--card-bg);
-}
-
-.tracker-photo-link {
-  display: block;
+.wall-hero h2 {
+  font-size: 1.875rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
   margin-bottom: 0.75rem;
 }
 
-.tracker-photo {
-  display: block;
-  width: 100%;
-  height: auto;
-  border-radius: 0.375rem;
-}
-
-.tracker-credit {
-  font-size: 0.75rem;
+.wall-hero p {
   color: var(--muted);
-  margin: -0.5rem 0 0.75rem;
+  font-size: 0.9375rem;
+  line-height: 1.65;
 }
 
-.tracker-outlet {
-  font-size: 0.8125rem;
-  color: var(--muted);
-  margin-top: 0.25rem;
+.wall {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 3rem;
 }
 
-.tracker-byline {
-  font-size: 0.8125rem;
-  color: var(--fg);
-  font-style: italic;
-  margin-top: 0.35rem;
-}
-
-.tracker-title {
+.wall-tile {
+  position: relative;
   display: block;
-  font-size: 1.0625rem;
-  font-weight: 600;
-  color: var(--fg);
+  aspect-ratio: 3 / 2;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: #111;
   text-decoration: none;
-  line-height: 1.35;
 }
 
-.tracker-title:hover {
-  text-decoration: underline;
+.wall-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.45s ease;
 }
 
-.tracker-item time {
+.wall-tile:hover .wall-img {
+  transform: scale(1.05);
+}
+
+.wall-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.8) 0%,
+    rgba(0, 0, 0, 0.32) 38%,
+    rgba(0, 0, 0, 0) 62%
+  );
+}
+
+.wall-meta {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0.7rem 0.8rem 0.75rem;
+  color: #fff;
+}
+
+.wall-outlet {
   display: block;
   font-size: 0.8125rem;
-  color: var(--muted);
-  margin-top: 0.25rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
 }
 
-.gap-badge {
-  font-size: 0.875rem;
-  color: var(--muted);
-  margin-top: 0.5rem;
+.wall-headline {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  font-size: 0.78rem;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.92);
+  margin-top: 0.2rem;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 0.35s ease, opacity 0.3s ease;
 }
 
-.gap-badge strong {
-  color: var(--fg);
+.wall-tile:hover .wall-headline,
+.wall-tile:focus-visible .wall-headline {
+  max-height: 4.5em;
+  opacity: 1;
 }
 
-.gap-dot {
-  margin: 0 0.35rem;
-  color: var(--border);
+@media (max-width: 900px) {
+  .wall {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .wall {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+  }
+  .wall-hero h2 {
+    font-size: 1.5rem;
+  }
+  /* No hover on touch: always reveal the headline. */
+  .wall-headline {
+    max-height: 4.5em;
+    opacity: 1;
+  }
 }
 
 /* Essay detail */
