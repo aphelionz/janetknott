@@ -189,6 +189,19 @@ header p {
   margin: -0.5rem 0 0.75rem;
 }
 
+.tracker-outlet {
+  font-size: 0.8125rem;
+  color: var(--muted);
+  margin-top: 0.25rem;
+}
+
+.tracker-byline {
+  font-size: 0.8125rem;
+  color: var(--fg);
+  font-style: italic;
+  margin-top: 0.35rem;
+}
+
 .tracker-title {
   display: block;
   font-size: 1.0625rem;

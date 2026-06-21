@@ -33,6 +33,11 @@ jobs:
 
       - name: Run tracker (stdlib only, no install)
         run: python tracker/update.py
+        env:
+          # Optional: a personal Google Alert RSS feed for broad-web sightings.
+          # Add it under Settings > Secrets and variables > Actions. If unset,
+          # the tracker just uses the Google News feed.
+          GOOGLE_ALERT_FEED_URL: ${{ secrets.GOOGLE_ALERT_FEED_URL }}
 
       - name: Commit if changed
         run: |

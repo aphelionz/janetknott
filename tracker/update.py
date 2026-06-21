@@ -20,6 +20,7 @@ Stdlib only, so the GitHub Action needs no `pip install`.
 
 import hashlib
 import json
+import os
 import re
 import urllib.parse
 import urllib.request
@@ -41,6 +42,13 @@ FEED_URL = (
     "https://news.google.com/rss/search"
     "?q=%22Janet+Knott%22&hl=en-US&gl=US&ceid=US:en"
 )
+# Optional second source: a personal Google Alert delivered as an RSS feed
+# (Mark's tuned "Janet Knott" alert). It covers the broad web beyond the Globe
+# and, crucially, its entry snippets quote the matched text, so a syndication
+# credit like "Janet Knott/The Boston Globe via Getty Images" is visible without
+# fetching the (often JS-rendered) page. Set via env / GitHub secret; unset = off.
+ALERT_FEED_URL = os.environ.get("GOOGLE_ALERT_FEED_URL", "").strip()
+ATOM_NS = "{http://www.w3.org/2005/Atom}"
 USER_AGENT = "janetknott-tracker/1.0 (+https://janetknott.com)"
 # A browser UA is needed to resolve Google News links and fetch Globe pages.
 BROWSER_UA = (
@@ -72,13 +80,74 @@ def fetch_feed(url=FEED_URL):
         return resp.read()
 
 
-def http_get(url, data=None):
+def http_get_bytes(url, data=None):
     headers = {"User-Agent": BROWSER_UA}
     if data is not None:
         headers["Content-Type"] = "application/x-www-form-urlencoded;charset=UTF-8"
     req = urllib.request.Request(url, data=data, headers=headers)
     with urllib.request.urlopen(req, timeout=30) as resp:
-        return resp.read().decode("utf-8", "replace")
+        return resp.read()
+
+
+def http_get(url, data=None):
+    return http_get_bytes(url, data).decode("utf-8", "replace")
+
+
+def decode_alert_link(href):
+    """A Google Alert link is google.com/url?...&url=<real>&...; pull <real>."""
+    try:
+        params = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
+        if params.get("url"):
+            return params["url"][0]
+    except ValueError:
+        pass
+    if href.startswith("http") and "google.com/alerts" not in href:
+        return href
+    return None
+
+
+# A caption date like "CAMBRIDGE, MA - SEPTEMBER 17, 1994:" carries the year the
+# photo was taken. Used for syndicated (Getty) sightings where the credit and
+# caption sit together in the alert snippet.
+CAPTION_DATE_RE = re.compile(
+    r"\b(?:January|February|March|April|May|June|July|August|September|October"
+    r"|November|December)\s+\d{1,2},?\s+((?:19|20)\d{2})\b",
+    re.IGNORECASE,
+)
+# The photo credit as it appears in a snippet, e.g. "Janet Knott/The Boston
+# Globe via Getty Images" -- shown on the card so the byline is the star.
+CREDIT_RE = re.compile(
+    r"Janet Knott[^.<>]*?(?:Boston Globe|Globe Staff)(?:[^.<>]*?Getty Images)?",
+    re.IGNORECASE,
+)
+
+
+def detect_caption_year(text):
+    m = CAPTION_DATE_RE.search(text or "")
+    return int(m.group(1)) if m else None
+
+
+def parse_alerts_feed(xml_bytes, since_year):
+    """Yield candidate sightings from a Google Alert Atom feed."""
+    root = ET.fromstring(xml_bytes)
+    for entry in root.iter(ATOM_NS + "entry"):
+        link_el = entry.find(ATOM_NS + "link")
+        real = decode_alert_link(link_el.get("href", "")) if link_el is not None else None
+        if not real:
+            continue
+        published = (entry.findtext(ATOM_NS + "published") or "")[:10]
+        if published and len(published) >= 4 and int(published[:4]) < since_year:
+            continue
+        title_full = collapse_ws(unescape(strip_tags(entry.findtext(ATOM_NS + "title") or "")))
+        # Collapse whitespace and tidy "Knott /The" spacing left by stripping <b>.
+        snippet = collapse_ws(unescape(strip_tags(entry.findtext(ATOM_NS + "content") or "")))
+        snippet = re.sub(r"\s*/\s*", "/", snippet)
+        yield {
+            "article_url": real,
+            "title_full": title_full,
+            "published": published,
+            "snippet": snippet,
+        }
 
 
 def resolve_article_url(google_url):
@@ -165,7 +234,7 @@ def enrich(sighting):
     """
     label = sighting["title"][:45]
     try:
-        real = resolve_article_url(sighting["url"])
+        real = sighting.get("article_url") or resolve_article_url(sighting["url"])
         if not real:
             print(f"  ! could not resolve {label}")
             return
@@ -188,6 +257,10 @@ def enrich(sighting):
 
 def strip_tags(text):
     return re.sub(r"<[^>]+>", " ", text or "")
+
+
+def collapse_ws(text):
+    return re.sub(r"\s+", " ", text or "").strip()
 
 
 def parse_items(xml_bytes, since_year):
@@ -340,8 +413,9 @@ def render(sightings, generated_on, style_version=""):
       <section class="tracker">
         <h2 class="section-title">Globe Sightings</h2>
         <p class="tracker-intro">Janet shot thousands of frames for the Boston Globe. Every
-        so often the paper reaches back into the archive and one of them runs again, decades
-        later, her byline along with it. This page watches for those reappearances.</p>
+        so often one of them runs again, decades later, her byline along with it: sometimes
+        in the Globe itself, sometimes licensed through Getty into a listicle halfway across
+        the web. This page watches for those reappearances.</p>
 {body}      </section>
     </main>
     <footer>
@@ -390,13 +464,87 @@ def _item_html(s):
             '\n          <p class="tracker-credit">Preview via The Boston Globe</p>'
         )
 
+    # Syndicated (non-Globe) sightings: name the outlet and show the byline
+    # credit that proves it is her photo, in place of a (Getty-owned) image.
+    outlet = ""
+    if s.get("source") and s.get("source") != "The Boston Globe":
+        outlet = f'\n          <p class="tracker-outlet">Appeared in {escape(s["source"])}</p>'
+    credit = ""
+    if not s.get("image") and s.get("credit"):
+        credit = f'\n          <p class="tracker-byline">{escape(s["credit"])}</p>'
+
     return (
         '        <li class="tracker-item">'
         f'{figure}\n'
         f'          <a class="tracker-title" href="{link}" target="_blank" rel="noopener noreferrer">{title}</a>\n'
-        f'          <time>{escape(pub_label)}</time>{badge}\n'
+        f'          <time>{escape(pub_label)}</time>{outlet}{credit}{badge}\n'
         "        </li>"
     )
+
+
+def ingest_alerts(sightings, since_year, today):
+    """Add verified non-duplicate sightings from the Google Alert feed.
+
+    Globe hits are trusted and enriched (image + year) like the news feed.
+    Non-Globe hits are kept only when the alert snippet shows a real
+    "Janet Knott / Boston Globe / Getty" photo credit, which screens out the
+    other-Janet-Knott noise; these are rendered as credited text cards (no
+    image, to avoid hotlinking Getty-licensed photos).
+    """
+    if not ALERT_FEED_URL:
+        return []
+    try:
+        candidates = list(parse_alerts_feed(http_get_bytes(ALERT_FEED_URL), since_year))
+        print(f"Alert feed returned {len(candidates)} recent item(s).")
+    except Exception as exc:
+        print(f"Alert feed fetch/parse failed ({exc!r}); skipping.")
+        return []
+
+    known = {normalize_url(s.get("article_url")) for s in sightings}
+    known |= {normalize_url(s.get("url")) for s in sightings}
+    added = []
+    for c in candidates:
+        key = normalize_url(c["article_url"])
+        if not key or key in known:
+            continue
+        known.add(key)
+
+        is_globe = "bostonglobe.com" in c["article_url"].lower()
+        low = c["snippet"].lower()
+        credited = "janet knott" in low and any(
+            k in low for k in ("boston globe", "globe staff", "getty")
+        )
+        if not (is_globe or credited):
+            print(f"  - skipped, no Globe/Getty credit: {c['title_full'][:50]}")
+            continue
+
+        title, source = c["title_full"], ""
+        if " - " in title:
+            title, source = title.rsplit(" - ", 1)
+        if not source:
+            source = urllib.parse.urlparse(c["article_url"]).netloc.replace("www.", "")
+
+        credit_m = CREDIT_RE.search(c["snippet"])
+        s = {
+            "url": c["article_url"],
+            "article_url": c["article_url"],
+            "title": title.strip(),
+            "published": c["published"],
+            "discovered": today,
+            "source": "The Boston Globe" if is_globe else source.strip(),
+            "snippet": c["snippet"],
+            "origin": "alert",
+            "shoot_year": detect_caption_year(c["snippet"]),
+            "credit": credit_m.group(0).strip() if credit_m else None,
+        }
+        if is_globe:
+            enrich(s)  # resolve image + caption year from the Globe page
+        else:
+            s["enriched"] = True  # text-only card; no Getty image hotlinking
+        sightings.append(s)
+        added.append(s)
+        print(f"  + alert sighting: {s['title'][:45]} (via {s['source']})")
+    return added
 
 
 def main():
@@ -421,6 +569,15 @@ def main():
     for s in sightings:
         if not s.get("enriched"):
             enrich(s)
+
+    # Second source: the personal Google Alert feed (broad web beyond the Globe).
+    alert_added = ingest_alerts(sightings, since_year, today)
+    added += alert_added
+    if alert_added:
+        sightings.sort(
+            key=lambda s: s.get("published") or s.get("discovered") or "",
+            reverse=True,
+        )
 
     style_version = ""
     if STYLE_PATH.exists():
