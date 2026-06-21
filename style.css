@@ -300,13 +300,6 @@ header p {
   margin: 0;
 }
 
-.essay-content figcaption {
-  font-size: 0.8125rem;
-  color: var(--muted);
-  line-height: 1.5;
-  margin-top: 0.5rem;
-}
-
 .essay-content p {
   margin-bottom: 1rem;
   line-height: 1.8;
